@@ -52,7 +52,7 @@ jobs:
         run: |
           ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
           BUCKET=elasticbeanstalk-$AWS_REGION-$ACCOUNT
-          VERSION=${GITHUB_SHA::8}-$GITHUB_RUN_NUMBER
+          VERSION=${GITHUB_SHA::8}-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT
           aws s3 cp backend/deploy.zip s3://$BUCKET/$EB_APP/$VERSION.zip
           aws elasticbeanstalk create-application-version --application-name $EB_APP --version-label $VERSION --source-bundle S3Bucket=$BUCKET,S3Key=$EB_APP/$VERSION.zip
           aws elasticbeanstalk update-environment --environment-name $EB_ENV --version-label $VERSION

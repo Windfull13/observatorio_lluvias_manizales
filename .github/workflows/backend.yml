@@ -7,7 +7,7 @@ on:
 
 env:
   AWS_REGION: us-east-2
-  ECR_REPOSITORY: observatorio-api
+  EB_APP: observatorio-api
 
 jobs:
   test:
@@ -28,24 +28,35 @@ jobs:
     environment: ${{ github.ref_name == 'main' && 'pdn' || (github.ref_name == 'qa' && 'qa' || 'dev') }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Empaquetar
+        working-directory: backend
+        run: |
+          mvn -B -DskipTests package
+          mkdir bundle
+          cp target/*.jar bundle/application.jar
+          echo 'web: java -Xmx400m -Dserver.port=5000 -jar application.jar' > bundle/Procfile
+          cd bundle && zip -r ../deploy.zip .
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-      - id: ecr
-        uses: aws-actions/amazon-ecr-login@v2
-      - name: Build y push de la imagen
+      - name: Desplegar en Elastic Beanstalk
+        env:
+          EB_ENV: ${{ vars.EB_ENV_NAME }}
         run: |
-          case "$GITHUB_REF_NAME" in
-            main) TAG=pdn ;;
-            qa)   TAG=qa ;;
-            *)    TAG=dev ;;
-          esac
-          IMG=${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
-          docker build -t $IMG:$TAG -t $IMG:$GITHUB_SHA ./backend
-          docker push $IMG:$TAG
-          docker push $IMG:$GITHUB_SHA
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET=elasticbeanstalk-$AWS_REGION-$ACCOUNT
+          VERSION=${GITHUB_SHA::8}-$GITHUB_RUN_NUMBER
+          aws s3 cp backend/deploy.zip s3://$BUCKET/$EB_APP/$VERSION.zip
+          aws elasticbeanstalk create-application-version --application-name $EB_APP --version-label $VERSION --source-bundle S3Bucket=$BUCKET,S3Key=$EB_APP/$VERSION.zip
+          aws elasticbeanstalk update-environment --environment-name $EB_ENV --version-label $VERSION
+          aws elasticbeanstalk wait environment-updated --environment-names $EB_ENV --version-label $VERSION
       - name: Smoke test
         if: ${{ vars.API_URL != '' }}
-        run: curl -f --retry 20 --retry-delay 15 --retry-all-errors "${{ vars.API_URL }}/actuator/health"
+        run: curl -f --retry 10 --retry-delay 15 --retry-all-errors '${{ vars.API_URL }}/actuator/health'

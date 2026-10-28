@@ -39,7 +39,7 @@ jobs:
           mvn -B -DskipTests package
           mkdir bundle
           cp target/*.jar bundle/application.jar
-          echo 'web: java -Xmx400m -Dserver.port=5000 -jar application.jar' > bundle/Procfile
+          echo "web: java -Xmx400m -Dserver.port=5000 -jar application.jar" > bundle/Procfile
           cd bundle && zip -r ../deploy.zip .
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -59,4 +59,4 @@ jobs:
           aws elasticbeanstalk wait environment-updated --environment-names $EB_ENV --version-label $VERSION
       - name: Smoke test
         if: ${{ vars.API_URL != '' }}
-        run: curl -f --retry 10 --retry-delay 15 --retry-all-errors '${{ vars.API_URL }}/actuator/health'
+        run: curl -f --retry 10 --retry-delay 15 --retry-all-errors "${{ vars.API_URL }}/actuator/health"
